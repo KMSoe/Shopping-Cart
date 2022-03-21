@@ -2,7 +2,11 @@
 
 namespace App\Exceptions;
 
+use Exception;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Http\Request;
 
 class Handler extends ExceptionHandler
 {
@@ -32,6 +36,21 @@ class Handler extends ExceptionHandler
      */
     public function register()
     {
-        //
+        $this->renderable(function (Exception $e, Request $request) {
+            if ($request->is('api/*')) {
+                if ($e instanceof AuthenticationException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => ['Not Authenticated'],
+                    ], 401);
+                } else if($e instanceof ModelNotFoundException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => ['Not Found'],
+                    ], 404);
+                }
+                return response()->json($e);
+            }
+        });
     }
 }

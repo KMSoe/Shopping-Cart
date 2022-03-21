@@ -4,34 +4,17 @@ namespace App\Http\Controllers\API\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 
 class CategoryController extends BaseController
 {
-    protected $category = '';
 
-    /**
-     * Create a new controller instance.
-     *
-     * @return void
-     */
-    public function __construct(Category $category)
+    public function __construct()
     {
         $this->middleware('auth:api');
-        $this->category = $category;
-    }
-
-
-    /**
-     * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function index()
-    {
-        $categories = Category::paginate(10);
-
-        return $this->sendResponse($categories, 'Category list');
     }
 
     /**
@@ -39,47 +22,133 @@ class CategoryController extends BaseController
      *
      * @return \Illuminate\Http\Response
      */
-    public function list()
+    public function index(Request $request)
     {
-        $categories = $this->category->pluck('name', 'id');
+        $query = Category::query();;
 
-        return $this->sendResponse($categories, 'Category list');
+        $sorts = explode(',', $request->input('sort', ''));
+
+        foreach ($sorts as $sortColumn) {
+            if ($sortColumn !== '') {
+                $sortDirection = str_starts_with($sortColumn, '-') ? 'desc' : 'asc';
+                $sortColumn = ltrim($sortColumn, '-');
+
+                $query->orderBy($sortColumn, $sortDirection);
+            }
+        }
+
+        $filters = explode(',', $request->query('filter'));
+
+        foreach ($filters as $filterColumn) {
+            if ($filterColumn !== '') {
+                [$field, $value] = explode(':', $filterColumn);
+
+                $query->where($field, $value);
+            }
+        }
+
+        $categories = $query->get();
+
+        return response()->json([
+            "meta" => [
+                "total" => count($categories),
+            ],
+            "data" => $categories,
+        ], 200);
     }
-
 
     /**
      * Store a newly created resource in storage.
      *
-     *
-     * @param $id
-     *
+     * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
-     * @throws \Illuminate\Validation\ValidationException
      */
     public function store(Request $request)
     {
-        $tag = $this->category->create([
-            'name' => $request->get('name'),
-            'description' => $request->get('description'),
+        $validator = Validator::make($request->all(), [
+            "name" => "required"
         ]);
 
-        return $this->sendResponse($tag, 'Category Created Successfully');
+        if ($validator->fails()) {
+            return $this->sendError($validator->errors(), 400);
+        }
+
+        try {
+            $category = new Category();
+            $category->name = $request->name;
+            $category->description = $request->description;
+            $category->save();
+
+            return $this->sendCreatedResponse($category->id, $category);
+        } catch (QueryException $e) {
+            return $this->sendError(["query" => ["Error in Creating Category"]], 500);
+        }
     }
 
     /**
-     * Update the resource in storage
+     * Display the specified resource.
      *
-     * @param $id
-     *
+     * @param  \App\Models\Category  $category
      * @return \Illuminate\Http\Response
-     * @throws \Illuminate\Validation\ValidationException
+     */
+    public function show(Category $category)
+    {
+        //
+    }
+
+    /**
+     * Update the specified resource in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \App\Models\Category  $category
+     * @return \Illuminate\Http\Response
      */
     public function update(Request $request, $id)
     {
-        $tag = $this->category->findOrFail($id);
+        // return $request;
+        try {
+            $category = Category::findOrFail($id);
 
-        $tag->update($request->all());
+            $validator = Validator::make($request->all(), [
+                "name" => "required"
+            ]);
+    
+            if ($validator->fails()) {
+                return $this->sendError($validator->errors(), 400);
+            }
 
-        return $this->sendResponse($tag, 'Category Information has been updated');
+            $category->name = $request->name;
+            $category->description = $request->description;
+            $category->save();
+
+            return $this->sendUpdatedResponse($category->id, $category);
+        } catch (ModelNotFoundException $e) {
+            return $this->sendError(["modelNotFound" => ["Model Not Found"]], 404);
+        } catch (QueryException $e) {
+            return $this->sendError(["query" => ["Error in Updating Category"]], 500);
+        }
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     *
+     * @param  \App\Models\Category  $category
+     * @return \Illuminate\Http\Response
+     */
+    public function destroy($id)
+    {
+        try {
+            $category = Category::findOrFail($id);
+
+            $countDeleted = $category->delete();
+
+            if ($countDeleted) {
+                return response()->json([], 204);
+            }
+        } catch (ModelNotFoundException $e) {
+            return $this->sendError(["modelNotFound" => ["Model Not Found"]], 404);
+        } catch (QueryException $e) {
+            return $this->sendError(["query" => ["Error in Deleting Category"]], 500);
+        }
     }
 }
