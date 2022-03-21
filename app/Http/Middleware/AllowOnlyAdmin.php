@@ -16,6 +16,12 @@ class AllowOnlyAdmin
      */
     public function handle(Request $request, Closure $next)
     {
+        if (auth()->user()->role->value !== 2) {
+            return response()->json([
+                "success" => false,
+                "errors" => ["unforbidden" => ["You don't have permission"]]
+            ], 403);
+        }
         return $next($request);
     }
 }
